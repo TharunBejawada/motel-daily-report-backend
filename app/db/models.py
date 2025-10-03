@@ -18,7 +18,7 @@ class MotelMaster(Base):
 
 # 📊 Report master table — main daily report record
 class ReportMaster(Base):
-    __tablename__ = "report_master"
+    __tablename__ = "motel_daily_report"
 
     id = Column(Integer, primary_key=True, index=True)
     motel_id = Column(Integer, ForeignKey("motel_master.id", ondelete="CASCADE"), nullable=False)
@@ -50,7 +50,7 @@ class ReportVacantDirtyRoom(Base):
     __tablename__ = "report_vacant_dirty_room"
 
     id = Column(Integer, primary_key=True)
-    report_id = Column(Integer, ForeignKey("report_master.id", ondelete="CASCADE"))
+    report_id = Column(Integer, ForeignKey("motel_daily_report.id", ondelete="CASCADE"))
     room_number = Column(String, nullable=False)
     reason = Column(Text, nullable=True)
     days = Column(Integer, default=0)
@@ -64,7 +64,7 @@ class ReportOutOfOrderRoom(Base):
     __tablename__ = "report_out_of_order_room"
 
     id = Column(Integer, primary_key=True)
-    report_id = Column(Integer, ForeignKey("report_master.id", ondelete="CASCADE"))
+    report_id = Column(Integer, ForeignKey("motel_daily_report.id", ondelete="CASCADE"))
     room_number = Column(String, nullable=False)
     reason = Column(Text, nullable=True)
     days = Column(Integer, default=0)
@@ -78,7 +78,7 @@ class ReportCompRoom(Base):
     __tablename__ = "report_comp_room"
 
     id = Column(Integer, primary_key=True)
-    report_id = Column(Integer, ForeignKey("report_master.id", ondelete="CASCADE"))
+    report_id = Column(Integer, ForeignKey("motel_daily_report.id", ondelete="CASCADE"))
     room_number = Column(String, nullable=False)
     notes = Column(Text, nullable=True)
 
@@ -90,7 +90,7 @@ class ReportIncident(Base):
     __tablename__ = "report_incident"
 
     id = Column(Integer, primary_key=True)
-    report_id = Column(Integer, ForeignKey("report_master.id", ondelete="CASCADE"))
+    report_id = Column(Integer, ForeignKey("motel_daily_report.id", ondelete="CASCADE"))
     description = Column(Text, nullable=True)
 
     report = relationship("ReportMaster", back_populates="incident_records")

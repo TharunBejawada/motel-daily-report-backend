@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.db.init_db import init_db
 from app.api import reports
+from app.api import motels
 
 app = FastAPI(title="Motel Daily Report API", version="1.0.0")
 
@@ -19,3 +20,4 @@ def on_startup():
     init_db()
 
 app.include_router(reports.router, prefix="/reports", tags=["reports"])
+app.include_router(motels.router, prefix="/motels", tags=["motels"])
