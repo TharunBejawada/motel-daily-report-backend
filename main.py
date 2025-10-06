@@ -1,3 +1,4 @@
+from mangum import Mangum
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -21,3 +22,9 @@ def on_startup():
 
 app.include_router(reports.router, prefix="/reports", tags=["reports"])
 app.include_router(motels.router, prefix="/motels", tags=["motels"])
+
+@app.get("/")
+def health():
+    return {"status": "ok", "message": "Lambda is working"}
+
+handler = Mangum(app)

@@ -33,32 +33,50 @@ def _client_secret_path() -> str:
 def _build_service(creds: Credentials):
     return build("gmail", "v1", credentials=creds, cache_discovery=False)
 
+# def get_gmail_service():
+#     creds = None
+#     token_file = _credentials_path()
+#     client_secret = _client_secret_path()
+
+#     if os.path.exists(token_file):
+#         creds = Credentials.from_authorized_user_file(token_file, SCOPES)
+
+#     if not creds or not creds.valid:
+#         if creds and creds.expired and creds.refresh_token:
+#             try:
+#                 creds.refresh(Request())
+#             except Exception as e:
+#                 LOGGER.warning("Token refresh failed (%s). Removing token.json to re-auth.", e)
+#                 try:
+#                     os.remove(token_file)
+#                 except Exception:
+#                     pass
+#                 creds = None
+#         if not creds:
+#             flow = InstalledAppFlow.from_client_secrets_file(client_secret, SCOPES)
+#             creds = flow.run_local_server(port=0)
+#         with open(token_file, "w") as token:
+#             token.write(creds.to_json())
+
+#     return _build_service(creds)
+
 def get_gmail_service():
     creds = None
     token_file = _credentials_path()
-    client_secret = _client_secret_path()
 
     if os.path.exists(token_file):
         creds = Credentials.from_authorized_user_file(token_file, SCOPES)
 
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            try:
-                creds.refresh(Request())
-            except Exception as e:
-                LOGGER.warning("Token refresh failed (%s). Removing token.json to re-auth.", e)
-                try:
-                    os.remove(token_file)
-                except Exception:
-                    pass
-                creds = None
-        if not creds:
-            flow = InstalledAppFlow.from_client_secrets_file(client_secret, SCOPES)
-            creds = flow.run_local_server(port=0)
-        with open(token_file, "w") as token:
-            token.write(creds.to_json())
+            creds.refresh(Request())
+            with open(token_file, "w") as token:
+                token.write(creds.to_json())
+        else:
+            raise RuntimeError("Missing refresh token. Run OAuth flow locally and redeploy.")
 
     return _build_service(creds)
+
 
 # ---------- Gmail helpers ----------
 
