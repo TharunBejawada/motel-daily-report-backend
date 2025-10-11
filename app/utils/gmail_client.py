@@ -4,6 +4,7 @@ import time
 import base64
 import logging
 import re
+import shutil
 from typing import List, Optional, Dict, Any
 
 from google.oauth2.credentials import Credentials
@@ -24,8 +25,18 @@ MAX_ATTACHMENT_BYTES = 12 * 1024 * 1024  # 12MB cap
 
 # ---------- Auth / Service ----------
 
-def _credentials_path() -> str:
-    return os.getenv("GMAIL_TOKEN_PATH", "token.json")
+# def _credentials_path() -> str:
+#     return os.getenv("GMAIL_TOKEN_PATH", "token.json")
+
+def _credentials_path():
+    # ✅ Use /tmp in Lambda, local path otherwise
+    if os.environ.get("AWS_EXECUTION_ENV"):
+        tmp_path = "/tmp/token.json"
+        if not os.path.exists(tmp_path):
+            shutil.copy("/app/token.json", tmp_path)
+        return tmp_path
+    root_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../..")
+    return os.path.join(root_path, "token.json")
 
 def _client_secret_path() -> str:
     return os.getenv("GMAIL_CLIENT_SECRET_PATH", "credentials.json")
@@ -60,20 +71,60 @@ def _build_service(creds: Credentials):
 
 #     return _build_service(creds)
 
+# def get_gmail_service():
+#     creds = None
+#     token_file = _credentials_path()
+
+#     if os.path.exists(token_file):
+#         creds = Credentials.from_authorized_user_file(token_file, SCOPES)
+
+#     if not creds or not creds.valid:
+#         if creds and creds.expired and creds.refresh_token:
+#             creds.refresh(Request())
+#             with open(token_file, "w") as token:
+#                 token.write(creds.to_json())
+#         else:
+#             raise RuntimeError("Missing refresh token. Run OAuth flow locally and redeploy.")
+
+#     return _build_service(creds)
+
 def get_gmail_service():
     creds = None
     token_file = _credentials_path()
+    print("📁 Checking token file path:", token_file)
+    print("📦 File exists?", os.path.exists(token_file))
 
+    # ✅ Read existing token if available
     if os.path.exists(token_file):
+        print("📏 File size:", os.path.getsize(token_file))
+        with open(token_file, "r") as f:
+            snippet = f.read(200)
+            print("🧾 Token snippet:", snippet)
         creds = Credentials.from_authorized_user_file(token_file, SCOPES)
+        print("🪪 Credentials loaded:", creds)
+        print("🔑 Refresh Token:", getattr(creds, "refresh_token", None))
+        print("⏰ Expired:", creds.expired)
+        print("✅ Valid:", creds.valid)
 
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
+
+    # ✅ Refresh if expired
+    if creds and creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+        with open(token_file, "w") as token:
+            token.write(creds.to_json())
+    elif not creds or not creds.valid:
+        # In Lambda, don’t attempt local OAuth flow — fail safely
+        if os.environ.get("AWS_EXECUTION_ENV"):
+            raise RuntimeError("Missing refresh token. Run OAuth flow locally and redeploy token.json.")
+        else:
+            # Normal local OAuth
+            from google_auth_oauthlib.flow import InstalledAppFlow
+            root_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../..")
+            client_secret = os.path.join(root_path, "credentials.json")
+            flow = InstalledAppFlow.from_client_secrets_file(client_secret, SCOPES)
+            creds = flow.run_local_server(port=0)
             with open(token_file, "w") as token:
                 token.write(creds.to_json())
-        else:
-            raise RuntimeError("Missing refresh token. Run OAuth flow locally and redeploy.")
 
     return _build_service(creds)
 

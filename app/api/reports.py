@@ -1,6 +1,10 @@
 # app/api/reports.py
 from fastapi import APIRouter, Query, HTTPException, Response
 from typing import Optional, List, Dict, Any
+import boto3, json, uuid, os
+from datetime import datetime
+
+import base64
 
 from app.services.report_service import ingest_reports_from_gmail  # your existing fetcher
 from app.repositories.session import get_session
@@ -11,6 +15,8 @@ from app.db.models import (
     ReportOutOfOrderRoom,
     ReportCompRoom,
     ReportIncident,
+    ReportJob,
+    JobStatus
 )
 from app.services.export_service import (
     get_report_json, export_report_pdf, export_report_docx
@@ -26,11 +32,39 @@ def fetch_reports(
     after: Optional[str] = Query(None, description="YYYY/MM/DD"),
     before: Optional[str] = Query(None, description="YYYY/MM/DD"),
 ):
+    if not os.environ.get("AWS_EXECUTION_ENV"):
+        # ✅ Local run — directly execute synchronously
+        try:
+            result = ingest_reports_from_gmail(mode=mode, limit=limit, pages=pages, after=after, before=before)
+            return {"ok": True, **result}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to fetch reports: {e}")
+    """Trigger async Gmail ingestion via Lambda."""
+    job_id = str(uuid.uuid4())
+
+    # Record the job in DB
+    with get_session() as db:
+        job = ReportJob(id=job_id, status=JobStatus.PENDING)
+        db.add(job)
+        db.commit()
+
+    # Trigger async invocation
     try:
-        result = ingest_reports_from_gmail(mode=mode, limit=limit, pages=pages, after=after, before=before)
-        return {"ok": True, **result}
+        lambda_client = boto3.client("lambda", region_name=os.environ["AWS_REGION"])
+        payload = {
+            "action": "fetch_reports",
+            "job_id": job_id,
+            "params": {"mode": mode, "limit": limit, "after": after, "before": before},
+        }
+        lambda_client.invoke(
+            FunctionName=os.environ["AWS_LAMBDA_FUNCTION_NAME"],
+            InvocationType="Event",  # async
+            Payload=json.dumps(payload),
+        )
+        return {"job_id": job_id, "status": "STARTED"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch reports: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to trigger job: {e}")
+    
 
 # ---------- NEW: LIST REPORTS ----------
 @router.get("")
@@ -142,34 +176,112 @@ def get_incidents(report_id: int):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get incidents: {e}")
 
-# ---------- NEW: EXPORT PDF ----------
+# # ---------- NEW: EXPORT PDF ----------
+# @router.get("/{report_id}/export/pdf")
+# def export_pdf(report_id: int):
+#     try:
+#         content = export_report_pdf(report_id)
+#         filename = f"report_{report_id}.pdf"
+#         return Response(
+#             content=content,
+#             media_type="application/pdf",
+#             headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+#         )
+#     except ValueError as ve:
+#         raise HTTPException(status_code=404, detail=str(ve))
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"Failed to export PDF: {e}")
+
+# # ---------- NEW: EXPORT DOCX ----------
+# @router.get("/{report_id}/export/docx")
+# def export_docx(report_id: int):
+#     try:
+#         content = export_report_docx(report_id)
+#         filename = f"report_{report_id}.docx"
+#         return Response(
+#             content=content,
+#             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+#             headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+#         )
+#     except ValueError as ve:
+#         raise HTTPException(status_code=404, detail=str(ve))
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"Failed to export DOCX: {e}")
+
+def lambda_file_response(content: bytes, mime_type: str, filename: str):
+    """
+    Handles binary file responses correctly for both local and AWS Lambda environments.
+    """
+    # ✅ Detect AWS Lambda environment
+    if os.environ.get("AWS_EXECUTION_ENV"):
+        # Encode to Base64 for API Gateway
+        encoded = base64.b64encode(content).decode("utf-8")
+        return {
+            "statusCode": 200,
+            "headers": {
+                "Content-Type": mime_type,
+                "Content-Disposition": f'attachment; filename="{filename}"'
+            },
+            "isBase64Encoded": True,
+            "body": encoded,
+        }
+    else:
+        # Normal FastAPI response for local dev
+        return Response(
+            content=content,
+            media_type=mime_type,
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
+
+
+# ---------- EXPORT PDF ----------
 @router.get("/{report_id}/export/pdf")
 def export_pdf(report_id: int):
     try:
         content = export_report_pdf(report_id)
         filename = f"report_{report_id}.pdf"
-        return Response(
-            content=content,
-            media_type="application/pdf",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        return lambda_file_response(
+            content,
+            "application/pdf",
+            filename
         )
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to export PDF: {e}")
 
-# ---------- NEW: EXPORT DOCX ----------
+
+# ---------- EXPORT DOCX ----------
 @router.get("/{report_id}/export/docx")
 def export_docx(report_id: int):
     try:
         content = export_report_docx(report_id)
         filename = f"report_{report_id}.docx"
-        return Response(
-            content=content,
-            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        return lambda_file_response(
+            content,
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            filename
         )
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to export DOCX: {e}")
+
+    
+
+@router.get("/status/{job_id}")
+def get_report_job_status(job_id: str):
+    with get_session() as db:
+        job = db.query(ReportJob).filter(ReportJob.id == job_id).first()
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+
+        return {
+            "id": job.id,
+            "status": job.status.value,
+            "started_at": job.started_at,
+            "completed_at": job.completed_at,
+            "message": job.message,
+            "result_summary": job.result_summary,
+        }
+

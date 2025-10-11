@@ -1,5 +1,7 @@
 from sqlalchemy.orm import declarative_base, relationship
-from sqlalchemy import Column, Integer, String, Float, Date, DateTime, ForeignKey, func, Text
+from sqlalchemy import Column, Integer, String, Float, Date, DateTime, ForeignKey, func, Text, JSON
+from sqlalchemy import Enum as SQLEnum
+from enum import Enum
 
 Base = declarative_base()
 
@@ -94,3 +96,20 @@ class ReportIncident(Base):
     description = Column(Text, nullable=True)
 
     report = relationship("ReportMaster", back_populates="incident_records")
+
+class JobStatus(Enum):
+    PENDING = "PENDING"
+    IN_PROGRESS = "IN_PROGRESS"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
+
+class ReportJob(Base):
+    __tablename__ = "report_jobs"
+
+    id = Column(String, primary_key=True, index=True)  # use UUID string
+    status = Column(SQLEnum(JobStatus), default=JobStatus.PENDING)
+    started_at = Column(DateTime, default=func.now())
+    completed_at = Column(DateTime, nullable=True)
+    message = Column(String, nullable=True)
+    result_summary = Column(JSON, nullable=True)
