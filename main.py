@@ -5,7 +5,7 @@ from mangum import Mangum
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.db.init_db import init_db
-from app.api import reports, motels
+from app.api import reports, motels, chat, usage
 
 # Setup logger
 logging.basicConfig(level=logging.INFO)
@@ -27,6 +27,8 @@ def on_startup():
 
 app.include_router(reports.router, prefix="/reports", tags=["reports"])
 app.include_router(motels.router, prefix="/motels", tags=["motels"])
+app.include_router(chat.router, prefix="/chat", tags=["chat"])
+app.include_router(usage.router, prefix="/usage", tags=["usage"])
 
 @app.get("/")
 def health():

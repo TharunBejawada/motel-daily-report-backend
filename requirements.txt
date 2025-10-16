@@ -29,9 +29,13 @@ lxml==6.0.2
 mangum==0.19.0
 oauthlib==3.3.1
 openai==1.109.1
+packaging==24.2
 pdfminer.six==20250506
 pdfplumber==0.11.7
 pillow==11.3.0
+pinecone==7.3.0
+pinecone-plugin-assistant==1.8.0
+pinecone-plugin-interface==0.0.7
 proto-plus==1.26.1
 protobuf==6.32.1
 psycopg2-binary==2.9.9

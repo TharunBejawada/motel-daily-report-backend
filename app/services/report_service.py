@@ -9,6 +9,8 @@ from app.parsers.pdf_text import extract_text_from_pdf
 from app.parsers.docx_text import extract_text_from_docx
 from app.parsers.openai_parser import OpenAIReportParser
 
+from app.vectorstore.pinecone_client import upsert_report_embedding
+
 from app.repositories.session import get_session
 from app.db.models import (
     MotelMaster,
@@ -273,6 +275,37 @@ def ingest_reports_from_gmail(
 
                 _insert_children(db, master.id, parsed)
                 db.commit()
+
+                # Prepare text to embed
+                text_for_embedding = f"""
+                Motel: {motel.motel_name}
+                Report Date: {master.report_date}
+                Location: {motel.location}
+                Department: {master.department}
+                Auditor: {master.auditor}
+                Revenue: {master.revenue}
+                ADR: {master.adr}
+                Occupancy: {master.occupancy}
+                Vacant Clean: {master.vacant_clean}
+                Vacant Dirty: {master.vacant_dirty}
+                Out Of Order/Storage rooms: {master.out_of_order_storage_rooms}
+                Complimentary Rooms: {master.comp_room_records}
+                Incidents: {master.incident_records}
+                Vacant/Dirty Rooms: {master.vacant_dirty_rooms}
+                Out Of Order Rooms: {master.out_of_order_rooms}
+                """
+
+                # Create metadata to store with the vector
+                metadata = {
+                    "motel_name": motel.motel_name,
+                    "location": motel.location,
+                    "department": master.department or "",
+                    "auditor": master.auditor or "",
+                    "content": text_for_embedding[:4000]
+                }
+
+                # 🔥 Generate and insert vector into Pinecone
+                upsert_report_embedding(motel.id, text_for_embedding, metadata)
 
                 stored += 1
                 items.append(

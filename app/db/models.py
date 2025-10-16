@@ -113,3 +113,15 @@ class ReportJob(Base):
     completed_at = Column(DateTime, nullable=True)
     message = Column(String, nullable=True)
     result_summary = Column(JSON, nullable=True)
+
+class TokenUsage(Base):
+    __tablename__ = "token_usage"
+
+    id = Column(Integer, primary_key=True, index=True)
+    model = Column(String(50))
+    operation = Column(String(30))  # e.g. "embedding" or "chat"
+    prompt_tokens = Column(Integer, default=0)
+    completion_tokens = Column(Integer, default=0)
+    total_tokens = Column(Integer, default=0)
+    cost_usd = Column(Float, default=0.0)
+    created_at = Column(DateTime, default=func.now())
